@@ -38,18 +38,6 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-37.0" "build-tools;37.0.0" "platform-tools"
 
-      # Hosted runners are ephemeral. Reuse one private debug key so each Dev
-      # APK can upgrade the preceding one without clearing the user's data.
-      - name: Configure development signing
-        if: github.event_name != 'pull_request' && github.repository == 'lladlam/MeloX-Android'
-        env:
-          MELOX_DEV_KEYSTORE_BASE64: ${{ secrets.MELOX_DEV_KEYSTORE_BASE64 }}
-        run: |
-          test -n "$MELOX_DEV_KEYSTORE_BASE64" || { echo "Missing development signing key" >&2; exit 1; }
-          mkdir -p "$HOME/.android"
-          umask 077
-          printf '%s' "$MELOX_DEV_KEYSTORE_BASE64" | base64 --decode > "$HOME/.android/debug.keystore"
-
       - name: Build debug APK
         run: |
           chmod +x android/gradlew
