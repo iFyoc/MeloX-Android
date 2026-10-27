@@ -76,7 +76,7 @@ internal class DlnaHttpServer(
                     headers["range"]?.let { header("Range", it) }
                     if (method == "HEAD") head()
                 }.build()
-            MeloXHttpClient.shared.newCall(request).execute().use { upstream ->
+            MeloXHttpClient.thirdPartyAndMedia.newCall(request).execute().use { upstream ->
                 failure = if (upstream.isSuccessful) null else "音频源返回 HTTP ${upstream.code}"
                 val forwarded = listOf("Content-Length", "Content-Range", "Accept-Ranges").mapNotNull { name ->
                     upstream.header(name)?.let { name to it }

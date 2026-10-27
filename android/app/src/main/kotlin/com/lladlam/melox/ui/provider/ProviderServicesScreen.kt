@@ -625,8 +625,14 @@ fun ProviderServicesScreen(
                                 require(url.startsWith("https://") || url.startsWith("http://")) { context.getString(R.string.provider_invalid_http) }
                                 val script = withContext(Dispatchers.IO) {
                                     val request = okhttp3.Request.Builder().url(url).build()
-                                    com.lladlam.melox.core.network.MeloXHttpClient.shared.newCall(request).execute().use { response ->
+                                    val client = com.lladlam.melox.core.network.MeloXHttpClient.thirdPartyAndMedia
+                                        .newBuilder().callTimeout(20, java.util.concurrent.TimeUnit.SECONDS).build()
+                                    client.newCall(request).execute().use { response ->
                                         if (!response.isSuccessful) error(context.getString(R.string.provider_download_failed, response.code))
+                                        require(response.body.contentLength() <= LxUserSourceStore.MaxScriptBytes &&
+                                            !response.body.source().request(LxUserSourceStore.MaxScriptBytes + 1)) {
+                                            "音乐源脚本过大（最大 9 MB）"
+                                        }
                                         response.body.string()
                                     }
                                 }

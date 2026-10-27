@@ -53,7 +53,7 @@ data class LxUserScript(
  * - Promise draining so async handlers resolve before the caller continues.
  */
 class LxUserRuntime(
-    private val httpClient: OkHttpClient = com.lladlam.melox.core.network.MeloXHttpClient.shared,
+    private val httpClient: OkHttpClient = com.lladlam.melox.core.network.MeloXHttpClient.thirdPartyAndMedia,
 ) : Closeable {
     private val runtimeThread = LxRuntimeThread()
     private lateinit var context: QuickJSContext

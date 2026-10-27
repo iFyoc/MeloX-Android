@@ -11,4 +11,10 @@
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="true">kugou.com</domain>
     </domain-config>
+
+    <!-- Only the isolated third-party/media client uses this non-resolving
+         internal hostname. It maps individual HTTP destinations itself. -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">media-http.melox.invalid</domain>
+    </domain-config>
 </network-security-config>

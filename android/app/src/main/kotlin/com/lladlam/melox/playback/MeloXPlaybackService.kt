@@ -23,7 +23,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
-import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
@@ -605,8 +605,7 @@ class MeloXPlaybackService : MediaSessionService(), MeloXLanHost {
     override fun onCreate() {
         super.onCreate()
         MeloXPlaybackModePreferences.initialize(this)
-        val httpFactory = DefaultHttpDataSource.Factory()
-            .setAllowCrossProtocolRedirects(true)
+        val httpFactory = OkHttpDataSource.Factory(com.lladlam.melox.core.network.MeloXHttpClient.thirdPartyAndMedia)
             .setDefaultRequestProperties(
                 mapOf(
                     "User-Agent" to "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/124 Mobile Safari/537.36",

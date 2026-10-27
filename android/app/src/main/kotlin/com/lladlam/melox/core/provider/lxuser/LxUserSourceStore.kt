@@ -10,7 +10,7 @@ object LxUserSourceStore {
     private const val PreferencesName = "melox_lx_user_sources"
     private const val KeyList = "list"
     private const val MaxSources = 20
-    private const val MaxScriptBytes = 9_000_000L
+    internal const val MaxScriptBytes = 9_000_000L
 
     fun list(context: Context): List<LxUserSourceRecord> {
         val raw = context.applicationContext

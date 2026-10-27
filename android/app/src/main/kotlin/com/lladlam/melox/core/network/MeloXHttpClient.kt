@@ -22,6 +22,16 @@ object MeloXHttpClient {
     val shared: OkHttpClient
         get() = client
 
+    /** For user-installed source scripts and media only; never shares account cookies. */
+    val thirdPartyAndMedia: OkHttpClient by lazy {
+        RestrictedHttpClient.create(
+            OkHttpClient.Builder()
+                .connectTimeout(10, TimeUnit.SECONDS)
+                .readTimeout(15, TimeUnit.SECONDS)
+                .build(),
+        )
+    }
+
     fun initialize(context: Context) {
         if (client.cache != null) return
         synchronized(this) {
