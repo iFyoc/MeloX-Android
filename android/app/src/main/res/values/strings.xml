@@ -235,7 +235,7 @@
     <string name="dlna_devices">LAN speakers / TVs (DLNA)</string>
     <string name="miplay_devices">Xiaomi MiPlay</string>
     <string name="usb_exclusive_title">USB exclusive (experimental)</string>
-    <string name="usb_exclusive_profile">Full-speed UAC1 · stereo PCM16 · adaptive / synchronous</string>
+    <string name="usb_exclusive_profile">UAC1 · stereo PCM · adaptive / synchronous</string>
     <string name="usb_exclusive_stop">Stop USB exclusive output</string>
     <string name="miplay_searching">Searching through Xiaomi interconnect services…</string>
     <string name="miplay_disconnect">Disconnect MiPlay</string>

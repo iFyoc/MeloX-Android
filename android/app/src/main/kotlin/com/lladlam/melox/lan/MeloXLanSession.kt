@@ -143,7 +143,7 @@ internal object MeloXLanSession {
             mode = if (handshake != null && MeloXLanRuntime.startCastSender(context, target, handshake, connection)) {
                 MeloXLanOutputMode.Cast
             } else {
-                MeloXCastAudioTap.muteLocalOutput = false
+                MeloXCastAudioTap.restoreLocalOutput()
                 MeloXLanOutputMode.Local
             }
         } finally { restartingCast = false }

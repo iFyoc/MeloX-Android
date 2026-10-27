@@ -4,7 +4,7 @@
     <string name="dlna_devices">局域网音箱 / 电视（DLNA）</string>
     <string name="miplay_devices">小米妙播（MiPlay）</string>
     <string name="usb_exclusive_title">USB 独占（实验性）</string>
-    <string name="usb_exclusive_profile">全速 UAC1 · 双声道 PCM16 · 自适应 / 同步</string>
+    <string name="usb_exclusive_profile">UAC1 · 双声道 PCM · 自适应 / 同步</string>
     <string name="usb_exclusive_stop">关闭 USB 独占输出</string>
     <string name="miplay_searching">正在通过小米互联服务寻找设备…</string>
     <string name="miplay_disconnect">断开小米妙播</string>

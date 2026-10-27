@@ -54,6 +54,12 @@ object MeloXLogExporter {
             appendLine("系统版本：${deviceInfo.systemVersion}")
             appendLine("已登录音乐源：${deviceInfo.loggedMusicSources.joinToString("、").ifBlank { "无" }}")
             appendLine()
+            val usbDiagnostics = com.lladlam.melox.usb.UsbAudioDiagnostics.report
+            if (usbDiagnostics.isNotBlank()) {
+                appendLine("=== 最近一次 USB 音频尝试 ===")
+                appendLine(usbDiagnostics)
+                appendLine()
+            }
             if (crashReports.isNotBlank()) {
                 appendLine("=== 崩溃现场记录 ===")
                 appendLine(crashReports)
@@ -98,6 +104,12 @@ object MeloXLogExporter {
             appendLine("系统版本：${deviceInfo.systemVersion}")
             appendLine("已登录音乐源：${deviceInfo.loggedMusicSources.takeIf { it.isNotEmpty() }?.joinToString("、") ?: "无"}")
             appendLine("应用日志条数：${logcat.lineCount}")
+            val usbDiagnostics = com.lladlam.melox.usb.UsbAudioDiagnostics.report
+            if (usbDiagnostics.isNotBlank()) {
+                appendLine()
+                appendLine("=== 最近一次 USB 音频尝试 ===")
+                appendLine(usbDiagnostics)
+            }
             // ── 崩溃现场 ──────────────────────────────────────────────────────────
             // logcat 通路在多数 ROM（含 vivo）上会被屏蔽，用户机崩溃时这里通常是空的。
             // `MeloXCrashRecorder` 直接落盘，因此是**唯一可靠**的崩溃来源，放在最前面。

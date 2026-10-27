@@ -262,10 +262,17 @@ class MeloXPlaybackService : MediaSessionService(), MeloXLanHost {
         }
 
         override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
+            if (reason == Player.DISCONTINUITY_REASON_SEEK || reason == Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT) {
+                com.lladlam.melox.usb.MeloXUsbAudioSession.onSeek()
+            }
             if (!lanPreparing && reason == Player.DISCONTINUITY_REASON_SEEK) MeloXLanRuntime.onTogetherSeek()
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
+            // This listener is also attached to AutoMix's standby deck; derive
+            // the USB clock state from the deck that currently owns playback
+            // so pausing the standby deck cannot freeze the DAC.
+            com.lladlam.melox.usb.MeloXUsbAudioSession.onPlaybackChanged(player?.isPlaying == true)
             listenedTimeTracker.onPlayingChanged(SystemClock.elapsedRealtime(), isPlaying)
             Log.d(TAG, "isPlaying=$isPlaying, ongoing=${isPlaybackOngoing()}")
             // 与 STATE_READY 那条路径互补：无缝切歌（新歌已预加载、不经过 BUFFERING）
@@ -1633,6 +1640,15 @@ class MeloXPlaybackService : MediaSessionService(), MeloXLanHost {
         }
         if (!enabled) {
             cancelPreparedMix(releaseStandby = true)
+            return
+        }
+        // The standby deck builds without the PCM tap, so an AutoMix crossfade
+        // would silence the USB DAC and strand it after promotion.
+        if (com.lladlam.melox.usb.MeloXUsbAudioSession.active) {
+            if (hasPreparedMix()) {
+                Log.i(TAG, "AutoMix cancelled: USB exclusive output is active")
+                cancelPreparedMix(releaseStandby = true)
+            }
             return
         }
         active.currentMediaItem?.let(::ensureBackgroundAnalysisScheduled)

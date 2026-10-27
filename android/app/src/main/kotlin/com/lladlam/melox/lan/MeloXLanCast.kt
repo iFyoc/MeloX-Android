@@ -65,6 +65,11 @@ internal object MeloXCastAudioTap {
     internal fun offer(bytes: ByteArray) {
         listener?.invoke(bytes)
     }
+
+    /** USB exclusive output may own the mute; only release it when no USB session is active. */
+    internal fun restoreLocalOutput() {
+        if (!com.lladlam.melox.usb.MeloXUsbAudioSession.active) muteLocalOutput = false
+    }
 }
 
 @UnstableApi

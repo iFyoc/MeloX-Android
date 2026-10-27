@@ -38,6 +38,12 @@ jobs:
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-37.0" "build-tools;37.0.0" "platform-tools"
 
+      - name: Test USB packet scheduler
+        run: |
+          g++ -std=c++17 -pthread -I"$JAVA_HOME/include" -I"$JAVA_HOME/include/linux" \
+            android/app/src/test/cpp/usb_audio_test.cpp -o "$RUNNER_TEMP/melox-usb-audio-test"
+          "$RUNNER_TEMP/melox-usb-audio-test"
+
       - name: Build debug APK
         run: |
           chmod +x android/gradlew

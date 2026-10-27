@@ -190,7 +190,7 @@ internal object MeloXLanRuntime {
                 if (reason == "format_changed") {
                     scope.launch { MeloXLanSession.resumeCastAfterFormatChange(context.applicationContext, connection) }
                 } else {
-                    MeloXCastAudioTap.muteLocalOutput = false
+                    MeloXCastAudioTap.restoreLocalOutput()
                     MeloXLanSession.castStopped(connection)
                     scope.launch { runCatching { connection.stopCast() } }
                 }
@@ -202,7 +202,7 @@ internal object MeloXLanRuntime {
         if (!sender.start()) {
             castSender = null
             castClient = null
-            MeloXCastAudioTap.muteLocalOutput = false
+            MeloXCastAudioTap.restoreLocalOutput()
             return@withContext false
         }
         MeloXCastAudioTap.muteLocalOutput = true
@@ -210,7 +210,7 @@ internal object MeloXLanRuntime {
     }
 
     fun stopCastSender(notifyRemote: Boolean = true, restoreLocalOutput: Boolean = true) {
-        if (restoreLocalOutput) MeloXCastAudioTap.muteLocalOutput = false
+        if (restoreLocalOutput) MeloXCastAudioTap.restoreLocalOutput()
         val client = castClient
         castClient = null
         val sender = castSender
