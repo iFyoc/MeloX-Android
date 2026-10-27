@@ -29,15 +29,15 @@
 
 > 弥乐是非官方开源项目，与网易云音乐、小米、Apple 及其关联公司不存在隶属、合作或授权关系。
 
-## 当前版本：0.7.0
+## 当前版本：0.7.1
 
-`0.7.0`（`versionCode 25`，2026-10-25）新增汽水音乐音源、LAN 一起放 / DLNA / 小米妙播与实验性 USB 音频输出，并重做播放回退、酷狗概念版签到和歌词罗马音显示。
+`0.7.1`（`versionCode 26`，2026-10-27）修复第三方音源 HTTP 拦截与 LX 脚本线程问题，将实验性 USB 独占扩展到全速／高速 UAC1 并支持日志导出诊断，同时加固启动与可选集成。
 
-- 汽水音乐支持抖音扫码登录、推荐、搜索、歌单、歌词与播放；LAN 一起放同步队列与跳转，DLNA、MiPlay 提供发现与播放会话，USB 输出以实验性 UAC1 方式接入。
-- 播放按“当前音源 → 其他内置音源严格完整音频匹配（网易云、QQ、酷狗概念版、汽水、酷我、Bilibili）→ 已配置的 CHKSZ/LX”顺序执行；Bilibili 他人收藏夹改用正确接口并按页加载。
-- 酷狗概念版每天自动签到并同时领取畅听与概念版 VIP；首次启动改为四步全屏引导，隐私政策与免责声明升级至 1.3，罗马音固定在每条视觉行下方并按发音单元横向对齐，更新弹窗限制在屏幕安全区内。
+- 第三方音源的导入、请求与播放改走隔离 HTTP 通道，支持动态域名、跳转与媒体 Range 请求，不继承账号 Cookie；LX 脚本会话固定在自己的 QuickJS 线程，等待覆盖默认 HTTP 超时。
+- USB 独占支持全速与高速 UAC1 自适应／同步端点及 16～32 位 PCM 容器（由 PCM16 左对齐补零转换，不宣称 bit-perfect），按 USB 微帧调度包长，暂停保留缓冲、拖动进度清理旧音频，并把 USB 描述符与速度结果附进导出日志；UAC2 与异步反馈仍待真机 DAC 验收。
+- 启动加固覆盖账号加密迁移失败、播放控制器绑定与音量广播、外部歌词桥接及可选小米／超级岛服务；修正 Android 10/EMUI 输出面板与画中画／前台服务版本判断。自动混音与 LAN 投放不再打断或误解除 USB 独占输出。
 
-- 下载与完整更新日志：[GitHub Releases](https://github.com/lladlam/MeloX-Android/releases/tag/0.7.0)
+- 下载与完整更新日志：[GitHub Releases](https://github.com/lladlam/MeloX-Android/releases/tag/0.7.1)
 - 详细版本记录：[CHANGELOG.md](CHANGELOG.md)
 - 本次版本说明：[CHANGELOG.md](CHANGELOG.md)
 
@@ -225,10 +225,11 @@ Liquid Glass 在 Android 上使用 Kyant0 `AndroidLiquidGlass` 的原生 Backdro
 5. 构建产物位于：
 
    ```text
-   android/app/build/outputs/apk/debug/app-debug.apk
+   android/app/build/outputs/apk/debug/app-arm64-v8a-debug.apk
+   android/app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk
    ```
 
-GitHub Actions 会在 `main` 分支代码更新时自动构建 Debug APK。正式提供给用户的开发版 APK 会使用项目发布密钥签名，并随对应版本号的 GitHub Release 发布。
+GitHub Actions 会在 `main` 分支代码更新时自动构建 Debug APK。滚动开发版发布到 `dev-latest` 预发布，使用 Android 默认 debug 密钥签名，不能覆盖安装正式版；正式版使用下述弥乐发布密钥签名。
 
 ## Release 签名验证
 

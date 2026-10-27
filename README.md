@@ -29,15 +29,15 @@ The **Windows** and **Linux** editions are in their final verification stage. If
 
 > MeloX Android is an unofficial open-source project. It is not affiliated with, partnered with, or authorized by NetEase Cloud Music, Xiaomi, Apple, or their related companies.
 
-## Current version: 0.7.0
+## Current version: 0.7.1
 
-`0.7.0` (versionCode **25**, 2026-10-25) adds the Qishui music provider, LAN Together / DLNA / MiPlay casting, and experimental USB audio output, while reworking playback fallbacks, Kugou Lite daily rewards and lyric romanization.
+`0.7.1` (versionCode **26**, 2026-10-27) fixes third-party HTTP music sources and LX script threading, widens the experimental USB exclusive output to full-speed and high-speed UAC1 with exportable diagnostics, and hardens startup plus optional integrations.
 
-- Qishui Music supports Douyin QR sign-in, recommendations, search, playlists, lyrics and playback. LAN Together now coordinates queue and seek changes; DLNA and MiPlay expose discovery and playback sessions; USB output is available as an experimental UAC1 path.
-- Playback resolves the current source first, then a strict full-audio match from another built-in source (NetEase, QQ Music, Kugou Lite, Qishui, Kuwo, Bilibili), and only then configured CHKSZ/LX resolvers. Bilibili collected folders use the correct endpoints and page lazily.
-- Kugou Lite checks in automatically once a day for both free-listening and concept VIP rewards. First-run onboarding is now a four-step full-screen flow, the privacy policy and disclaimer are version 1.3, lyric romanization stays under each visual line with per-unit alignment, and the update dialog stays inside screen safe areas.
+- Third-party sources now import, request and play over an isolated HTTP channel that supports dynamic domains, redirects and media Range requests without inheriting account cookies. LX script sessions stay on their own QuickJS thread with waits that cover the default HTTP timeout.
+- USB exclusive output accepts full-speed and high-speed UAC1 adaptive/synchronous endpoints with 16–32-bit PCM containers (widened from PCM16; not bit-perfect), schedules packets per USB microframe, keeps the buffer on pause, flushes stale audio on seek, and appends USB descriptors and speed results to exported logs. UAC2 and asynchronous feedback remain unsupported pending real-DAC validation.
+- Startup hardening covers account-encryption migration failures, audio-controller binding and volume broadcasts, external lyric bridges, and optional Xiaomi/超级岛 services; Android 10/EMUI output panels and PiP/service-type version checks are corrected. AutoMix and LAN cast can no longer interrupt or unmute a USB exclusive session.
 
-- Download and full notes: [GitHub Releases](https://github.com/lladlam/MeloX-Android/releases/tag/0.7.0)
+- Download and full notes: [GitHub Releases](https://github.com/lladlam/MeloX-Android/releases/tag/0.7.1)
 - Version history: [CHANGELOG.md](CHANGELOG.md)
 
 > [!WARNING]
@@ -228,7 +228,7 @@ Some RuntimeShader and Backdrop effects need a newer Android version. Older vers
     android/app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk
    ```
 
-GitHub Actions builds a debug APK when `main` changes. Development APKs published to users are signed with the project release key and attached to the matching GitHub Release.
+GitHub Actions builds a debug APK when `main` changes. Rolling development builds are published to the `dev-latest` prerelease; they are signed with Android's default debug key, so they cannot update an official release install in place. Official releases are signed with the MeloX release key described below.
 
 ## Experimental CLI
 
