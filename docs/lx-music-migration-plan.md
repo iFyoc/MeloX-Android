@@ -36,3 +36,24 @@
 4. **网易兜底收紧**（中）：匹配时优先 artist 精确 + 时长 ±3s + 排除非 live/cover 标题。
 5. **脚本过期提醒**（低）：读取 `expirationTime`，过期时在音乐服务页提示。
 6. **日志开关**（低）：设置页增加 LX 脚本日志开关，统一经 `lx.log` 收集。
+
+## 2026-10-28 逐项对照审计与修复
+
+对照对象：`lx-music-mobile v1.9.1`（`user-api-preload.js` + `QuickJS.java` + `core/init/userApi/request.js` + `toOldMusicInfo`）与官方 `lx-music-source` 脚本（2024-06-12 最后提交）。
+
+已修复（`LxUserRuntime.kt` / 新增 `LxUserScriptContract.kt`）：
+
+1. **musicInfo 扁平契约**：官方宿主在脚本边界使用 `toOldMusicInfo()` 的扁平格式——`songmid = meta.songId`，且 tx `strMediaMid`/`albumMid`/数值 `songId`、kg `hash`/`albumId`、`img`、`types`/`_types`、`typeUrl` 全部在**顶层**。MeloX 修复前把 per-source 字段放进 `meta` 嵌套，导致官方 QQ 源拼出 `M500undefined.mp3` 必然失败。现由 `buildLxMusicInfo()` 按契约构建，`meta` 作为附加超集保留。
+2. **响应头形状**：`toMultimap()` 的 `Map<String, List<String>>` 改为小写键 + 逗号拼接字符串（fetch `Headers.map` 形状），修复脚本 `resp.headers.cookie` 拿到数组、回传带方括号的问题。
+3. **请求错误对象**：回调首参由字符串改为 JS `Error`，`err.message` 可用。
+4. **响应体解析**：对齐 `JSON.parse` 尽力解析（裸数字/布尔/字符串/null 也解析）；`data` 展开兼容改为只补缺失键、绝不覆盖真实顶层键。
+5. **send/on 语义**：`inited`/`updateAlert` 一次性守卫、`log` 必填与 `updateUrl` 校验、未知事件 reject（原先静默 resolve）；`updateAlert` 内容记录进日志并可经 `sentEvents()` 读取。
+6. **AES 模式**：仅接受 `aes-128-cbc`/`aes-128-ecb`，未知 mode 抛错（原先静默按 ECB）。
+7. **inited 过滤**：按宿主白名单取交集（仅 kw/kg/tx/wy/mg/local、`type: 'music'`、qualitys ∩ 128k/320k/flac/flac24bit）；actions 允许 musicUrl/lyric/pic（官方仅 local 支持 lyric/pic，MeloX 保留该超集）。
+8. **setTimeout**：移除 60 秒上限（官方无上限）。
+9. **console**：脚本输出经 URL/token 脱敏后进入 logcat（`MeloXLxScript`），随日志导出可见。
+10. **Function.prototype.toString 伪装**：对齐官方，防止脚本指纹识别桥接函数。
+
+有意保留的差异（超集，不修）：musicUrl 结果额外接受 `{url}`/`{data.url}` 对象返回；`meta`/`id`/`title`/`duration` 等附加键；`formData` 修复了官方的实现缺陷；全局对象不做递归冻结（会锁死 MeloX 为 CJS 社区脚本提供的 `module`/`exports` 垫片）。
+
+已验证一致、无需修改：md5（官方原生先 `URLDecoder.decode` 再摘要，与 MeloX round-trip 等价）、aes/rsa/buffer 全部函数、默认 UA、默认 `Accept: application/json`、POST Content-Type 默认、13 秒默认超时与 60 秒上限、响应 `statusCode/statusMessage/url/ok` 字段、取消函数返回值。

@@ -58,6 +58,9 @@ class LxUserRuntime(
     private val runtimeThread = LxRuntimeThread()
     private lateinit var context: QuickJSContext
     private val requestHandlers = mutableListOf<JSFunction>()
+    private val recordedEvents = java.util.concurrent.CopyOnWriteArrayList<Pair<String, Any?>>()
+    private var initedSent = false
+    private var updateAlertSent = false
     private val sourceQualities = mutableMapOf<String, List<String>>()
     private val sourceActions = mutableMapOf<String, Set<String>>()
     private val activeCalls = ConcurrentHashMap<Int, Call>()
@@ -215,18 +218,38 @@ class LxUserRuntime(
         sourceActions.isEmpty() || action in sourceActions[source].orEmpty()
     }
 
-    fun sentEvents(): List<Pair<String, Any?>> = emptyList()
+    fun sentEvents(): List<Pair<String, Any?>> = recordedEvents.toList()
+
+    private fun resolvePromise(): Any? = context.evaluate("Promise.resolve()")
+
+    private fun rejectPromise(message: String): Any? =
+        context.evaluate("Promise.reject(new Error(${JSONObject.quote(message)})))")
 
     private fun installGlobals() {
+        // LX streams script console output into its log UI; route ours to
+        // logcat (redacted) so exported MeloX logs show what a script printed.
         val console = context.createNewJSObject()
-        listOf("log", "info", "warn", "error", "debug", "group", "groupEnd", "table", "time", "timeEnd").forEach { name ->
-            console.setProperty(name, JSCallFunction { null })
+        listOf(
+            "log" to "d", "info" to "d", "debug" to "d", "group" to "d", "groupEnd" to "d",
+            "table" to "d", "time" to "d", "timeEnd" to "d",
+            "warn" to "w", "error" to "e",
+        ).forEach { (name, level) ->
+            console.setProperty(name, JSCallFunction { args ->
+                val message = args.joinToString(" ") { jsArgForLog(it) }.safeLogMessage().take(400)
+                when (level) {
+                    "w" -> Log.w(SCRIPT_TAG, message)
+                    "e" -> Log.e(SCRIPT_TAG, message)
+                    else -> Log.d(SCRIPT_TAG, message)
+                }
+                null
+            })
         }
         context.globalObject.setProperty("console", console)
 
         context.globalObject.setProperty("setTimeout", JSCallFunction { args ->
             val callback = args.firstOrNull() as? JSFunction ?: return@JSCallFunction 0
-            val delayMs = (args.getOrNull(1) as? Number)?.toLong()?.coerceIn(0L, 60_000L) ?: 0L
+            // LX timers have no upper bound; only negative delays clamp to 0.
+            val delayMs = (args.getOrNull(1) as? Number)?.toLong()?.coerceAtLeast(0L) ?: 0L
             val params = args.drop(2)
             val id = nextTimerId++
             timers[id] = (System.currentTimeMillis() + delayMs) to JSCallFunction { callback.call(*params.toTypedArray()) }
@@ -257,15 +280,43 @@ class LxUserRuntime(
         lx.setProperty("on", JSCallFunction { args ->
             val event = args.getOrNull(0)?.toString().orEmpty()
             val handler = args.getOrNull(1) as? JSFunction
-            if (event == "request" && handler != null) requestHandlers.add(handler)
+            if (event != "request") return@JSCallFunction rejectPromise("The event is not supported: $event")
+            if (handler != null) requestHandlers.add(handler)
             Log.d(TAG, "event on name=$event registered=${handler != null} total=${requestHandlers.size}")
-            context.evaluate("Promise.resolve()")
+            resolvePromise()
         })
         lx.setProperty("send", JSCallFunction { args ->
             val event = args.firstOrNull()?.toString().orEmpty()
-            if (event == "inited") recordSourceQualities(args.getOrNull(1))
-            Log.d(TAG, "event send name=$event")
-            context.evaluate("Promise.resolve()")
+            when (event) {
+                "inited" -> {
+                    // LX allows a single inited payload per script.
+                    if (initedSent) return@JSCallFunction rejectPromise("Script is inited")
+                    initedSent = true
+                    recordSourceQualities(args.getOrNull(1))
+                    recordedEvents.add("inited" to null)
+                    Log.d(TAG, "event send name=inited sources=${sourceQualities.keys}")
+                    resolvePromise()
+                }
+                "updateAlert" -> {
+                    // Mirrors LX: one alert per script, log is mandatory, and
+                    // a malformed over-long updateUrl is dropped.
+                    if (updateAlertSent) return@JSCallFunction rejectPromise("The update alert can only be called once.")
+                    val payload = args.getOrNull(1).asHostMap()
+                    val alertLog = payload["log"]?.toString()
+                    if (alertLog.isNullOrBlank()) return@JSCallFunction rejectPromise("log is required.")
+                    var updateUrl = payload["updateUrl"]?.toString()
+                    if (updateUrl != null && !UPDATE_URL_PATTERN.matches(updateUrl) && updateUrl.length > 1024) {
+                        updateUrl = null
+                    }
+                    updateAlertSent = true
+                    val entry = mapOf("log" to alertLog.take(1024), "updateUrl" to updateUrl)
+                    recordedEvents.add("updateAlert" to entry)
+                    Log.i(TAG, "script updateAlert log=${alertLog.take(200).safeLogMessage()} " +
+                        "updateUrl=${updateUrl?.toSafeEndpoint().orEmpty()}")
+                    resolvePromise()
+                }
+                else -> rejectPromise("The event is not supported: $event")
+            }
         })
         lx.setProperty("utils", createUtils())
         lx.setProperty("currentScriptInfo", context.createNewJSObject())
@@ -295,6 +346,17 @@ class LxUserRuntime(
                 enumerable: false
               })
               globalThis.Function = proxyFunctionConstructor
+
+              // Mask host/native function sources the same way LX does so
+              // scripts cannot fingerprint the bridge via toString().
+              const lxToString = Function.prototype.toString
+              Function.prototype.toString = function() {
+                const descriptor = Object.getOwnPropertyDescriptors(this).name
+                const fnName = this && this.name ? this.name : ''
+                return descriptor.configurable
+                  ? lxToString.apply(this)
+                  : 'function ' + fnName + '() { [native code] }'
+              }
 
               // Remove dangerous globals if present.
               delete globalThis.java
@@ -342,8 +404,13 @@ class LxUserRuntime(
             val mode = args.getOrNull(1)?.toString().orEmpty()
             val key = android.util.Base64.decode(lxBase64(args.getOrNull(2)), android.util.Base64.DEFAULT)
             val iv = android.util.Base64.decode(lxBase64(args.getOrNull(3)), android.util.Base64.DEFAULT)
-            val cbc = mode == "aes-128-cbc"
-            val transformation = if (cbc) "AES/CBC/PKCS7Padding" else "AES/ECB/NoPadding"
+            // LX only accepts these two modes and throws for anything else.
+            val transformation = when (mode) {
+                "aes-128-cbc" -> "AES/CBC/PKCS7Padding"
+                "aes-128-ecb" -> "AES/ECB/NoPadding"
+                else -> throw IllegalArgumentException("Unsupported AES mode: $mode")
+            }
+            val cbc = transformation.contains("CBC")
             val encrypted = Cipher.getInstance(transformation).apply {
                 if (cbc) {
                     val paddedIv = ByteArray(16)
@@ -483,7 +550,7 @@ class LxUserRuntime(
                 call.execute().use { response ->
                     if (call.isCanceled()) return@execute
                     val rawBytes = response.body.bytes()
-                    val parsedBody: Any = if (binary) jsBytes(rawBytes) else parseResponseBody(rawBytes.toString(Charsets.UTF_8))
+                    val parsedBody: Any? = if (binary) jsBytes(rawBytes) else parseResponseBody(rawBytes.toString(Charsets.UTF_8))
                     Log.i(
                         TAG,
                         "LX HTTP status=${response.code} contentType=${response.header("Content-Type").orEmpty()} " +
@@ -493,7 +560,9 @@ class LxUserRuntime(
                     val result = mapOf(
                         "statusCode" to response.code,
                         "statusMessage" to response.message,
-                        "headers" to response.headers.toMultimap(),
+                        // LX exposes fetch-shaped headers: lower-cased names,
+                        // comma-joined string values (never lists).
+                        "headers" to flattenLxResponseHeaders(response.headers.toMultimap()),
                         "body" to parsedBody,
                         "url" to response.request.url.toString(),
                         "ok" to response.isSuccessful,
@@ -525,7 +594,11 @@ class LxUserRuntime(
         while (true) {
             val response = pendingHttpResponses.poll() ?: break
             if (response.error != null) {
-                response.callback.call(response.error, null, null)
+                // LX hands scripts a real Error so `err.message` works.
+                val error = runCatching {
+                    context.evaluate("new Error(${JSONObject.quote(response.error)})")
+                }.getOrNull() ?: response.error
+                response.callback.call(error, null, null)
             } else {
                 val resultObj = response.result?.let { createJsObject(it) }
                 val bodyObj = response.body?.let { toJsValue(it) }
@@ -534,23 +607,34 @@ class LxUserRuntime(
         }
     }
 
-    private fun parseResponseBody(body: String): Any = runCatching {
-        when (body.trimStart().firstOrNull()) {
-            '{' -> JSONObject(body).toHostValue().let { value ->
-                // Some LX endpoints wrap the actual payload in `data`, while
-                // older user scripts read `body.url` directly.
-                val nested = value["data"]
-                when {
-                    value["url"] != null -> value
-                    nested is Map<*, *> -> value + nested.entries.associate { it.key.toString() to it.value }
-                    nested is String && nested.startsWith("http") -> value + ("url" to nested)
-                    else -> value
+    private fun parseResponseBody(body: String): Any? {
+        val trimmed = body.trimStart()
+        return runCatching {
+            when (trimmed.firstOrNull()) {
+                '{' -> JSONObject(trimmed).toHostValue().let { value ->
+                    // Additive compatibility: some user scripts read payload
+                    // keys directly (body.url) instead of body.data.url. Only
+                    // missing top-level keys are filled in; real top-level
+                    // values are never overwritten.
+                    val nested = value["data"]
+                    val additions: Map<String, Any?> = when {
+                        value["url"] != null -> emptyMap()
+                        nested is Map<*, *> -> nested.entries
+                            .associate { it.key.toString() to it.value }
+                            .filterKeys { it !in value.keys }
+                        nested is String && nested.startsWith("http") -> mapOf("url" to nested)
+                        else -> emptyMap()
+                    }
+                    value + additions
                 }
+                '[' -> JSONArray(trimmed).toHostValue()
+                // Match LX's JSON.parse-where-possible handling: bare numbers,
+                // booleans, quoted strings and null become their parsed value.
+                null -> body
+                else -> jsonValue(JSONArray("[$trimmed]").opt(0))
             }
-            '[' -> JSONArray(body).toHostValue()
-            else -> body
-        }
-    }.getOrDefault(body)
+        }.getOrDefault(body)
+    }
 
     private fun recordSourceQualities(value: Any?) {
         val data = when (value) {
@@ -565,23 +649,31 @@ class LxUserRuntime(
             else -> return
         }
         sourceMap.forEach { (name, rawInfo) ->
+            val source = name?.toString()
+            // Mirror LX's host filter: only known sources declaring type
+            // 'music' register, and their qualities/actions are intersected
+            // with what this host supports.
+            if (source == null || source !in LX_SOURCES) return@forEach
             val info = when (rawInfo) {
                 is QuickJSObject -> rawInfo.toMap()
                 is Map<*, *> -> rawInfo
                 else -> return@forEach
             }
-            val qualities = when (val raw = info["qualitys"]) {
+            if (info["type"]?.toString() != "music") return@forEach
+            val declaredQualities = when (val raw = info["qualitys"]) {
                 is QuickJSObject -> raw.toArray().mapNotNull { it?.toString() }
                 is List<*> -> raw.mapNotNull { it?.toString() }
                 else -> emptyList()
             }
-            val actions = when (val raw = info["actions"]) {
-                is QuickJSObject -> raw.toArray().mapNotNull { it?.toString() }.toSet()
-                is List<*> -> raw.mapNotNull { it?.toString() }.toSet()
-                else -> emptySet()
+            val declaredActions = when (val raw = info["actions"]) {
+                is QuickJSObject -> raw.toArray().mapNotNull { it?.toString() }
+                is List<*> -> raw.mapNotNull { it?.toString() }
+                else -> emptyList()
             }
-            if (name != null && qualities.isNotEmpty()) sourceQualities[name.toString()] = qualities
-            if (name != null && actions.isNotEmpty()) sourceActions[name.toString()] = actions
+            val qualities = SUPPORT_LX_QUALITIES.filter { it in declaredQualities }
+            val actions = SUPPORT_LX_ACTIONS.filter { it in declaredActions }
+            if (qualities.isNotEmpty()) sourceQualities[source] = qualities
+            if (actions.isNotEmpty()) sourceActions[source] = actions.toSet()
         }
     }
 
@@ -757,6 +849,12 @@ class LxUserRuntime(
             Thread(runnable, "melox-lx-http").apply { isDaemon = true }
         }
         private val QUALITY_ORDER = listOf("128k", "320k", "flac", "flac24bit")
+        private val LX_SOURCES = setOf("kw", "kg", "tx", "wy", "mg", "local")
+        private val SUPPORT_LX_QUALITIES = listOf("128k", "320k", "flac", "flac24bit")
+        // LX only lets 'local' serve lyric/pic; MeloX keeps those actions for
+        // any declared source as an intentional, documented superset.
+        private val SUPPORT_LX_ACTIONS = listOf("musicUrl", "lyric", "pic")
+        private val UPDATE_URL_PATTERN = Regex("^https?://[^\\s$.?#].[^\\s]*$")
         private const val ACTION_TIMEOUT_MS = HTTP_TIMEOUT_MS + 2_000L
         private const val LX_USER_AGENT =
             "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.100 Safari/537.36"
@@ -795,6 +893,15 @@ class LxUserRuntime(
 }
 
 private const val TAG = "MeloXLxRuntime"
+private const val SCRIPT_TAG = "MeloXLxScript"
+
+private fun jsArgForLog(value: Any?): String = when (value) {
+    null -> "null"
+    is String -> value
+    is Number, is Boolean -> value.toString()
+    is com.whl.quickjs.wrapper.QuickJSObject -> runCatching { value.toString() }.getOrDefault("[object]")
+    else -> value.toString()
+}
 
 private fun String.toSafeEndpoint(): String = runCatching {
     val uri = android.net.Uri.parse(this)

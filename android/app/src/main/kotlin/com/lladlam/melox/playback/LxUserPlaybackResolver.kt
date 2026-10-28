@@ -8,6 +8,7 @@ import com.lladlam.melox.core.music.model.MusicTrack
 import com.lladlam.melox.core.provider.lxuser.LxUserRuntime
 import com.lladlam.melox.core.provider.lxuser.LxUserScript
 import com.lladlam.melox.core.provider.lxuser.LxUserSourceStore
+import com.lladlam.melox.core.provider.lxuser.buildLxMusicInfo
 import com.lladlam.melox.core.network.NeteaseSearchClient
 import com.lladlam.melox.core.lyrics.LrcLyricsParser
 import com.lladlam.melox.core.lyrics.LyricsDocument
@@ -63,7 +64,7 @@ class LxUserPlaybackResolver(
             MusicSource.Netease -> "wy"
             else -> return null
         }
-        val song = standardMusicInfo(track, sourceCode, AudioQualityTier.Standard.toLxQuality())
+        val song = buildLxMusicInfo(track, sourceCode, AudioQualityTier.Standard.toLxQuality())
         for (record in LxUserSourceStore.list(appContext)) {
             val script = LxUserSourceStore.script(appContext, record.id) ?: continue
             val result = runCatching {
@@ -130,24 +131,9 @@ class LxUserPlaybackResolver(
         if (title.isBlank() || artist.isBlank()) return null
         val resourceId = track.id.value
         val lxQuality = quality.toLxQuality()
-        val song = standardMusicInfo(track, sourceCode, lxQuality)
+        val song = buildLxMusicInfo(track, sourceCode, lxQuality)
         Log.d(TAG, "LX resolve start provider=${track.id.source.storageValue} id=${resourceId.take(8)} quality=$lxQuality " +
             "source=$sourceCode title=${title.take(40)} artist=${artist.take(40)}")
-        val actionArgs = mapOf<String, Any?>(
-            "id" to resourceId,
-            "songId" to resourceId,
-            "mid" to resourceId,
-            "songmid" to resourceId,
-            "hash" to resourceId,
-            "name" to title,
-            "title" to title,
-            "artist" to artist,
-            "singer" to artist,
-            "duration" to track.durationMs?.div(1_000L),
-            "durationMs" to track.durationMs,
-            "quality" to lxQuality,
-            "musicInfo" to song,
-        )
         for (record in LxUserSourceStore.list(appContext)) {
             val script = LxUserSourceStore.script(appContext, record.id) ?: continue
             var phase = "load"
@@ -242,7 +228,7 @@ class LxUserPlaybackResolver(
     }
 
     private fun resolveNeteaseTrack(track: MusicTrack, quality: AudioQualityTier): LxUserPlaybackResult? {
-        val song = standardMusicInfo(track, "wy", quality.toLxQuality())
+        val song = buildLxMusicInfo(track, "wy", quality.toLxQuality())
         for (record in LxUserSourceStore.list(appContext)) {
             val script = LxUserSourceStore.script(appContext, record.id) ?: continue
             val result = runCatching {
@@ -286,58 +272,6 @@ private fun normalizeLxText(value: String): String = value
     .lowercase(Locale.ROOT)
     .replace(Regex("[\\s\\p{Punct}·•，。！？、（）()\\[\\]【】]"), "")
 
-
-private fun standardMusicInfo(
-    track: MusicTrack,
-    sourceCode: String?,
-    quality: String,
-): Map<String, Any?> {
-    val durationSeconds = track.durationMs?.coerceAtLeast(0L)?.div(1_000L)
-    val interval = durationSeconds?.let { seconds ->
-        String.format(Locale.ROOT, "%02d:%02d", seconds / 60L, seconds % 60L)
-    }
-    val metadata = when (val provider = track.providerMetadata) {
-        is com.lladlam.melox.core.music.model.ProviderTrackMetadata.QQMusic -> mapOf(
-            // LX's canonical model keeps QQ's mid, numeric id and media mid
-            // separately. User sources rely on all three fields.
-            "songId" to track.id.value,
-            "id" to (provider.numericSongId ?: 0L),
-            "strMediaMid" to (provider.mediaMid ?: track.id.value),
-            "albumMid" to (track.album?.id?.value ?: ""),
-        )
-        is com.lladlam.melox.core.music.model.ProviderTrackMetadata.Kugou -> mapOf(
-            "songId" to track.id.value,
-            "hash" to provider.hash,
-            "albumId" to provider.albumId,
-        )
-        is com.lladlam.melox.core.music.model.ProviderTrackMetadata.Kuwo -> mapOf(
-            "songId" to provider.mid,
-        )
-        else -> mapOf("songId" to track.id.value)
-    } + mapOf(
-        "qualitys" to listOf(quality),
-        "_qualitys" to emptyMap<String, Any?>(),
-        "albumName" to (track.album?.name ?: ""),
-        "picUrl" to track.artworkUrl,
-    )
-    return mapOf(
-        "id" to track.id.value,
-        "name" to track.title,
-        "singer" to track.artistText,
-        "artist" to track.artistText,
-        "source" to sourceCode,
-        "interval" to interval,
-        "meta" to metadata,
-        "songId" to track.id.value,
-        "songmid" to track.id.value,
-        "mid" to track.id.value,
-        "hash" to track.id.value,
-        "title" to track.title,
-        "duration" to durationSeconds,
-        "durationMs" to track.durationMs,
-        "quality" to quality,
-    )
-}
 
 private fun AudioQualityTier.toLxQuality(): String = when (this) {
     AudioQualityTier.Standard -> "128k"
